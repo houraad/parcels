@@ -830,7 +830,7 @@ class Field(object):
 
     def ccode_eval(self, var, t, x, y, z):
         # Casting interp_methd to int as easier to pass on in C-code
-        return "temporal_interpolation(%s, %s, %s, %s, %s, particle->cxi, particle->cyi, particle->czi, particle->cti, &%s, %s)" \
+        return "temporal_interpolation(%s, %s, %s, %s, %s, particle->cxi, particle->cyi, particle->czi, particle->cti, &%s, %s, A_GRID)" \
             % (x, y, z, t, self.name, var, self.interp_method.upper())
 
     def ccode_convert(self, _, x, y, z):
