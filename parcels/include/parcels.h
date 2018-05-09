@@ -239,10 +239,11 @@ static inline ErrorCode search_indices_curvilinear(float x, float y, float z, in
   }
 
   double a[4], b[4];
+  double tol = 1e-4;
 
   *xsi = *eta = -1;
   int maxIterSearch = 1e6, it = 0;
-  while ( (*xsi < 0) || (*xsi > 1) || (*eta < 0) || (*eta > 1) ){
+  while ( (*xsi < 0-tol) || (*xsi > 1+tol) || (*eta < 0-tol) || (*eta > 1+tol) ){
     float xgrid_loc[4] = {xgrid[*yi][*xi], xgrid[*yi][*xi+1], xgrid[*yi+1][*xi+1], xgrid[*yi+1][*xi]};
     if (sphere_mesh){ //we are on the sphere
       int i4;
@@ -264,7 +265,7 @@ static inline ErrorCode search_indices_curvilinear(float x, float y, float z, in
     b[3] =  ygrid[*yi][*xi] - ygrid[*yi][*xi+1] + ygrid[*yi+1][*xi+1] - ygrid[*yi+1][*xi];
 
     double aa = a[3]*b[2] - a[2]*b[3];
-    if (fabs(aa) < 1e-12){  // Rectilinear  cell, or quasi
+    if (fabs(aa) < 1e-9){  // Rectilinear  cell, or quasi
       if( fabs(ygrid[*yi+1][*xi] - ygrid[*yi][*xi]) >  fabs(ygrid[*yi][*xi+1] - ygrid[*yi][*xi]) ){ // well-oriented cell, like in mid latitudes in NEMO
         *xsi = ( (x-xgrid_loc[0]) / (xgrid_loc[1]-xgrid_loc[0])
              +   (x-xgrid_loc[3]) / (xgrid_loc[2]-xgrid_loc[3]) ) * .5;
@@ -287,22 +288,22 @@ static inline ErrorCode search_indices_curvilinear(float x, float y, float z, in
         *xsi = (x-a[0]-a[2]* (*eta)) / (a[1]+a[3]* (*eta));
       }
     }
-    if ( (*xsi < 0) && (*eta < 0) && (*xi == 0) && (*yi == 0) )
+    if ( (*xsi < 0-tol) && (*eta < 0-tol) && (*xi == 0) && (*yi == 0) )
       return ERROR_OUT_OF_BOUNDS;
-    if ( (*xsi > 1) && (*eta > 1) && (*xi == xdim-1) && (*yi == ydim-1) )
+    if ( (*xsi > 1+tol) && (*eta > 1+tol) && (*xi == xdim-1) && (*yi == ydim-1) )
       return ERROR_OUT_OF_BOUNDS;
-    if (*xsi < 0) 
+    if (*xsi < 0-tol) 
       (*xi)--;
-    if (*xsi > 1)
+    if (*xsi > 1+tol)
       (*xi)++;
-    if (*eta < 0)
+    if (*eta < 0-tol)
       (*yi)--;
-    if (*eta > 1)
+    if (*eta > 1+tol)
       (*yi)++;
     fix_2d_indices(xi, yi, xdim, ydim, sphere_mesh);
     it++;
     if ( it > maxIterSearch){
-      printf("Correct cell not found after %d iterations\n", maxIterSearch);
+      printf("Correct cell not found after %d iterations (%1.5f %1.5f)\n", maxIterSearch, x, y);
       return ERROR_OUT_OF_BOUNDS;
     }
   }
@@ -331,9 +332,13 @@ static inline ErrorCode search_indices_curvilinear(float x, float y, float z, in
   else
     *zeta = 0;
 
-  if ( (*xsi < 0) || (*xsi > 1) ) return ERROR_OUT_OF_BOUNDS;
-  if ( (*eta < 0) || (*eta > 1) ) return ERROR_OUT_OF_BOUNDS;
+  if ( (*xsi < 0-tol) || (*xsi > 1+tol) ) return ERROR_OUT_OF_BOUNDS;
+  if ( (*eta < 0-tol) || (*eta > 1+tol) ) return ERROR_OUT_OF_BOUNDS;
   if ( (*zeta < 0) || (*zeta > 1) ) return ERROR_OUT_OF_BOUNDS;
+  if (*xsi < 0) *xsi = 0;
+  if (*xsi > 1) *xsi = 1;
+  if (*eta < 0) *eta = 0;
+  if (*eta > 1) *eta = 1;
 
   return SUCCESS;
 }
