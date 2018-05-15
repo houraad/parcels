@@ -4,7 +4,7 @@ from ctypes import Structure, c_int, c_float, c_double, POINTER, cast, c_void_p,
 from enum import IntEnum
 import datetime
 
-__all__ = ['GridCode', 'RectilinearZGrid', 'RectilinearSGrid', 'CurvilinearZGrid', 'CurvilinearSGrid', 'CGrid']
+__all__ = ['GridCode', 'StaggeredGridCode', 'RectilinearZGrid', 'RectilinearSGrid', 'CurvilinearZGrid', 'CurvilinearSGrid', 'CGrid']
 
 
 class GridCode(IntEnum):
@@ -14,8 +14,14 @@ class GridCode(IntEnum):
     CurvilinearSGrid = 3
 
 
+class StaggeredGridCode(IntEnum):
+    AGrid = 0
+    CGrid = 1
+
+
 class CGrid(Structure):
     _fields_ = [('gtype', c_int),
+                ('staggered_grid_type', c_int),
                 ('grid', c_void_p)]
 
 
@@ -24,7 +30,7 @@ class Grid(object):
 
     """
 
-    def __init__(self, lon, lat, time, time_origin, mesh):
+    def __init__(self, lon, lat, time, time_origin, mesh, staggered_grid_type):
         self.lon = lon
         self.lat = lat
         self.time = np.zeros(1, dtype=np.float64) if time is None else time
@@ -50,12 +56,13 @@ class Grid(object):
         self.meridional_halo = 0
         self.lat_flipped = False
         self.defer_load = False
+        self.staggered_grid_type = staggered_grid_type
 
     @property
     def ctypes_struct(self):
         # This is unnecessary for the moment, but it could be useful when going will fully unstructured grids
         self.cgrid = cast(pointer(self.child_ctypes_struct), c_void_p)
-        cstruct = CGrid(self.gtype, self.cgrid.value)
+        cstruct = CGrid(self.gtype, self.staggered_grid_type, self.cgrid.value)
         return cstruct
 
     @property
@@ -157,14 +164,14 @@ class RectilinearGrid(Grid):
 
     """
 
-    def __init__(self, lon, lat, time, time_origin, mesh):
+    def __init__(self, lon, lat, time, time_origin, mesh, staggered_grid_type):
         assert(isinstance(lon, np.ndarray) and len(lon.shape) == 1), 'lon is not a numpy vector'
         assert(isinstance(lat, np.ndarray) and len(lat.shape) == 1), 'lat is not a numpy vector'
         assert (isinstance(time, np.ndarray) or not time), 'time is not a numpy array'
         if isinstance(time, np.ndarray):
             assert(len(time.shape) == 1), 'time is not a vector'
 
-        Grid.__init__(self, lon, lat, time, time_origin, mesh)
+        Grid.__init__(self, lon, lat, time, time_origin, mesh, staggered_grid_type)
         self.xdim = self.lon.size
         self.ydim = self.lat.size
         self.tdim = self.time.size
@@ -217,8 +224,8 @@ class RectilinearZGrid(RectilinearGrid):
            2. flat: No conversion, lat/lon are assumed to be in m.
     """
 
-    def __init__(self, lon, lat, depth=None, time=None, time_origin=None, mesh='flat'):
-        RectilinearGrid.__init__(self, lon, lat, time, time_origin, mesh)
+    def __init__(self, lon, lat, depth=None, time=None, time_origin=None, mesh='flat', staggered_grid_type=StaggeredGridCode.AGrid):
+        RectilinearGrid.__init__(self, lon, lat, time, time_origin, mesh, staggered_grid_type)
         if isinstance(depth, np.ndarray):
             assert(len(depth.shape) == 1), 'depth is not a vector'
 
@@ -254,8 +261,8 @@ class RectilinearSGrid(RectilinearGrid):
            2. flat: No conversion, lat/lon are assumed to be in m.
     """
 
-    def __init__(self, lon, lat, depth, time=None, time_origin=None, mesh='flat'):
-        RectilinearGrid.__init__(self, lon, lat, time, time_origin, mesh)
+    def __init__(self, lon, lat, depth, time=None, time_origin=None, mesh='flat', staggered_grid_type=StaggeredGridCode.AGrid):
+        RectilinearGrid.__init__(self, lon, lat, time, time_origin, mesh, staggered_grid_type)
         assert(isinstance(depth, np.ndarray) and len(depth.shape) in [3, 4]), 'depth is not a 3D or 4D numpy array'
 
         self.gtype = GridCode.RectilinearSGrid
@@ -278,7 +285,7 @@ class RectilinearSGrid(RectilinearGrid):
 
 class CurvilinearGrid(Grid):
 
-    def __init__(self, lon, lat, time=None, time_origin=None, mesh='flat'):
+    def __init__(self, lon, lat, time=None, time_origin=None, mesh='flat', staggered_grid_type=StaggeredGridCode.AGrid):
         assert(isinstance(lon, np.ndarray) and len(lon.squeeze().shape) == 2), 'lon is not a 2D numpy array'
         assert(isinstance(lat, np.ndarray) and len(lat.squeeze().shape) == 2), 'lat is not a 2D numpy array'
         assert (isinstance(time, np.ndarray) or not time), 'time is not a numpy array'
@@ -287,7 +294,7 @@ class CurvilinearGrid(Grid):
 
         lon = lon.squeeze()
         lat = lat.squeeze()
-        Grid.__init__(self, lon, lat, time, time_origin, mesh)
+        Grid.__init__(self, lon, lat, time, time_origin, mesh, staggered_grid_type)
         self.xdim = self.lon.shape[1]
         self.ydim = self.lon.shape[0]
         self.tdim = self.time.size
@@ -346,8 +353,8 @@ class CurvilinearZGrid(CurvilinearGrid):
            2. flat: No conversion, lat/lon are assumed to be in m.
     """
 
-    def __init__(self, lon, lat, depth=None, time=None, time_origin=None, mesh='flat'):
-        CurvilinearGrid.__init__(self, lon, lat, time, time_origin, mesh)
+    def __init__(self, lon, lat, depth=None, time=None, time_origin=None, mesh='flat', staggered_grid_type=StaggeredGridCode.AGrid):
+        CurvilinearGrid.__init__(self, lon, lat, time, time_origin, mesh, staggered_grid_type)
         if isinstance(depth, np.ndarray):
             assert(len(depth.shape) == 1), 'depth is not a vector'
 
@@ -382,8 +389,8 @@ class CurvilinearSGrid(CurvilinearGrid):
            2. flat: No conversion, lat/lon are assumed to be in m.
     """
 
-    def __init__(self, lon, lat, depth, time=None, time_origin=None, mesh='flat'):
-        CurvilinearGrid.__init__(self, lon, lat, time, time_origin, mesh)
+    def __init__(self, lon, lat, depth, time=None, time_origin=None, mesh='flat', staggered_grid_type=StaggeredGridCode.AGrid):
+        CurvilinearGrid.__init__(self, lon, lat, time, time_origin, mesh, staggered_grid_type)
         assert(isinstance(depth, np.ndarray) and len(depth.shape) in [3, 4]), 'depth is not a 4D numpy array'
 
         self.gtype = GridCode.CurvilinearSGrid

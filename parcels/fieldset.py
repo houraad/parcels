@@ -1,6 +1,6 @@
 from parcels.field import Field
 from parcels.gridset import GridSet
-from parcels.grid import RectilinearZGrid
+from parcels.grid import RectilinearZGrid, StaggeredGridCode
 from parcels.scripts import compute_curvilinearGrid_rotationAngles
 from parcels.loggers import logger
 import numpy as np
@@ -110,7 +110,8 @@ class FieldSet(object):
 
     @classmethod
     def from_netcdf(cls, filenames, variables, dimensions, indices={},
-                    mesh='spherical', allow_time_extrapolation=None, time_periodic=False, full_load=False, **kwargs):
+                    mesh='spherical', allow_time_extrapolation=None, time_periodic=False, full_load=False,
+                    dimension_filename='', **kwargs):
         """Initialises FieldSet object from NetCDF files
 
         :param filenames: Dictionary mapping variables to file(s). The
@@ -163,7 +164,8 @@ class FieldSet(object):
 
             fields[var] = Field.from_netcdf(paths, var, dims, inds, mesh=mesh,
                                             allow_time_extrapolation=allow_time_extrapolation,
-                                            time_periodic=time_periodic, full_load=full_load, **kwargs)
+                                            time_periodic=time_periodic, full_load=full_load,
+                                            dimension_filename=dimension_filename, **kwargs)
         u = fields.pop('U', None)
         v = fields.pop('V', None)
         return cls(u, v, fields=fields)
@@ -207,40 +209,45 @@ class FieldSet(object):
                This flag overrides the allow_time_interpolation and sets it to False
         """
 
-        if 'mesh_mask' not in variables:
-            variables['mesh_mask'] = {'cosU': 'cosU',
-                                      'sinU': 'sinU',
-                                      'cosV': 'cosV',
-                                      'sinV': 'sinV'}
-            dimensions['mesh_mask'] = {'U': {'lon': 'glamu', 'lat': 'gphiu'},
-                                       'V': {'lon': 'glamv', 'lat': 'gphiv'},
-                                       'F': {'lon': 'glamf', 'lat': 'gphif'}}
+        #if 'mesh_mask' not in variables:
+        #    variables['mesh_mask'] = {'cosU': 'cosU',
+        #                              'sinU': 'sinU',
+        #                              'cosV': 'cosV',
+        #                              'sinV': 'sinV'}
+        #    dimensions['mesh_mask'] = {'U': {'lon': 'glamu', 'lat': 'gphiu'},
+        #                               'V': {'lon': 'glamv', 'lat': 'gphiv'},
+        #                               'F': {'lon': 'glamf', 'lat': 'gphif'}}
 
-        rotation_angles_filename = path.join(path.dirname(filenames['mesh_mask']), 'rotation_angles.nc').replace('/', '_')
-        compute_curvilinearGrid_rotationAngles(filenames['mesh_mask'], rotation_angles_filename,
-                                               variables=variables['mesh_mask'], dimensions=dimensions['mesh_mask'])
+        #rotation_angles_filename = path.join(path.dirname(filenames['mesh_mask']), 'rotation_angles.nc').replace('/', '_')
+        #compute_curvilinearGrid_rotationAngles(filenames['mesh_mask'], rotation_angles_filename,
+        #                                       variables=variables['mesh_mask'], dimensions=dimensions['mesh_mask'])
 
-        if 'cosU' not in filenames:
-            filenames['cosU'] = rotation_angles_filename
-            filenames['sinU'] = rotation_angles_filename
-            filenames['cosV'] = rotation_angles_filename
-            filenames['sinV'] = rotation_angles_filename
+        #if 'cosU' not in filenames:
+        #    filenames['cosU'] = rotation_angles_filename
+        #    filenames['sinU'] = rotation_angles_filename
+        #    filenames['cosV'] = rotation_angles_filename
+        #    filenames['sinV'] = rotation_angles_filename
 
-            variables['cosU'] = 'cosU'
-            variables['sinU'] = 'sinU'
-            variables['cosV'] = 'cosV'
-            variables['sinV'] = 'sinV'
+        #    variables['cosU'] = 'cosU'
+        #    variables['sinU'] = 'sinU'
+        #    variables['cosV'] = 'cosV'
+        #    variables['sinV'] = 'sinV'
 
-            dimensions['cosU'] = {'lon': 'glamu', 'lat': 'gphiu'}
-            dimensions['sinU'] = {'lon': 'glamu', 'lat': 'gphiu'}
-            dimensions['cosV'] = {'lon': 'glamv', 'lat': 'gphiv'}
-            dimensions['sinV'] = {'lon': 'glamv', 'lat': 'gphiv'}
+        #    dimensions['cosU'] = {'lon': 'glamu', 'lat': 'gphiu'}
+        #    dimensions['sinU'] = {'lon': 'glamu', 'lat': 'gphiu'}
+        #    dimensions['cosV'] = {'lon': 'glamv', 'lat': 'gphiv'}
+        #    dimensions['sinV'] = {'lon': 'glamv', 'lat': 'gphiv'}
 
-        variables.pop('mesh_mask')
-        dimensions.pop('mesh_mask')
+        #variables.pop('mesh_mask')
+        #dimensions.pop('mesh_mask')
+
+        dimension_filename = filenames.pop('mesh_mask')
+        dimensions = {'lon': 'glamf', 'lat': 'gphif'}
+        variables = {'U': 'U', 'V': 'V'}
 
         return cls.from_netcdf(filenames, variables, dimensions, mesh=mesh, indices=indices, time_periodic=time_periodic,
-                               allow_time_extrapolation=allow_time_extrapolation, **kwargs)
+                               allow_time_extrapolation=allow_time_extrapolation,
+                               dimension_filename=dimension_filename, staggered_grid_type=StaggeredGridCode.CGrid, **kwargs)
 
     @classmethod
     def from_parcels(cls, basename, uvar='vozocrtx', vvar='vomecrty', indices={}, extra_fields={},
