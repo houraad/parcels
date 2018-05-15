@@ -460,8 +460,7 @@ static double spherical_distance(float x0, float x1, float y0, float y1)
   double rc = R * 2 * atan2(sqrt(a),sqrt(1-a));
   return rc;
 }
-//static double simple_interpolate(double xsi, double eta, float *f)
-static double simple_interpolate(double xsi, double eta, double *f)
+static double simple_interpolate(double xsi, double eta, float *f)
 {
   double v = (1-xsi) * (1-eta) * f[0]+
                 xsi  * (1-eta) * f[1]+
@@ -479,13 +478,9 @@ static inline ErrorCode spatial_interpolation_2d_c_grid(double xsi, double eta, 
   float (* ygrid)[xdim] = (float (*)[xdim]) grid->lat;
   float (*dataU)[xdim] = (float (*)[xdim]) u_data;
   float (*dataV)[xdim] = (float (*)[xdim]) v_data;
-  yi = 4;
-  xi = 5;
 
-  //float xgrid_loc[4] = {xgrid[yi][xi], xgrid[yi][xi+1], xgrid[yi+1][xi+1], xgrid[yi+1][xi]};
-  //float ygrid_loc[4] = {ygrid[yi][yi], ygrid[yi][yi+1], ygrid[yi+1][yi+1], ygrid[yi+1][yi]};
-  double xgrid_loc[4] = {175.35198974609375, 176.08944702148438, 176.22166442871094, 175.474609375};
-  double ygrid_loc[4] = {81.42720794677734, 81.41040802001953, 81.53264617919922, 81.54976654052734};
+  float xgrid_loc[4] = {xgrid[yi][xi], xgrid[yi][xi+1], xgrid[yi+1][xi+1], xgrid[yi+1][xi]};
+  float ygrid_loc[4] = {ygrid[yi][xi], ygrid[yi][xi+1], ygrid[yi+1][xi+1], ygrid[yi+1][xi]};
 
   double U0 = dataU[yi+1][xi]   * spherical_distance(xgrid_loc[3], xgrid_loc[0], ygrid_loc[3], ygrid_loc[0]);
   double U1 = dataU[yi+1][xi+1] * spherical_distance(xgrid_loc[1], xgrid_loc[2], ygrid_loc[1], ygrid_loc[2]);
@@ -519,8 +514,6 @@ static inline ErrorCode spatial_interpolation_2d_c_grid(double xsi, double eta, 
 
   *u = (lon_new-lon) / dt * deg2m * cos(rad * lat);
   *v = (lat_new-lat) / dt * deg2m;
-  printf("velocities %g %gi\n", *u, *v);
-  exit(0);
 
   return SUCCESS;
 }
