@@ -294,8 +294,9 @@ class KernelGenerator(ast.NodeVisitor):
                         if f not in self.field_args:
                             args += [c.Pointer(c.Value("CField", "%s" % f))]
                     except:
-                        if fieldset.U.grid.gtype in [GridCode.CurvilinearZGrid, GridCode.CurvilinearSGrid]:
-                            raise RuntimeError("cosU, sinU, cosV and sinV fields must be defined for a proper rotation of U, V fields in curvilinear grids")
+                        pass
+                        #if fieldset.U.grid.gtype in [GridCode.CurvilinearZGrid, GridCode.CurvilinearSGrid]:
+                        #    raise RuntimeError("cosU, sinU, cosV and sinV fields must be defined for a proper rotation of U, V fields in curvilinear grids")
         for const, _ in self.const_args.items():
             args += [c.Value("float", const)]
 

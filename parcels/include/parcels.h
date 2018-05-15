@@ -10,13 +10,18 @@ extern "C" {
 
 typedef enum
   {
-    SUCCESS=0, REPEAT=1, DELETE=2, ERROR=3, ERROR_OUT_OF_BOUNDS=4, ERROR_TIME_EXTRAPOLATION =5
+    SUCCESS=0, REPEAT=1, DELETE=2, ERROR=3, ERROR_OUT_OF_BOUNDS=4, ERROR_TIME_EXTRAPOLATION=5
   } ErrorCode;
 
 typedef enum
   {
     RECTILINEAR_Z_GRID=0, RECTILINEAR_S_GRID=1, CURVILINEAR_Z_GRID=2, CURVILINEAR_S_GRID=3
   } GridCode;
+
+typedef enum
+  {
+    A_GRID=0, C_GRID=1
+  } StaggeredGridCode;
 
 typedef enum
   {
@@ -27,7 +32,7 @@ typedef enum
 
 typedef struct
 {
-  int gtype;
+  int gtype, staggered_gtype;
   void *grid;
 } CGrid;
 
@@ -450,6 +455,75 @@ static inline ErrorCode spatial_interpolation_nearest3D(double xsi, double eta, 
   return SUCCESS;
 }
 
+static double spherical_distance(float x0, float x1, float y0, float y1)
+{
+  double R = 360*60*1852 / (2*M_PI);
+  double rad = M_PI / 180.;
+  double dlat = rad * (y1-y0);
+  double dlon = rad * (x1-x0);
+  double a = sin(dlat/2)*sin(dlat/2) + cos(rad*y0) * cos(rad*y1) * sin(dlon/2) * sin(dlon/2);
+  double rc = R * 2 * atan2(sqrt(a),sqrt(1-a));
+  return rc;
+}
+static double simple_interpolate(double xsi, double eta, float *f)
+{
+  double v = (1-xsi) * (1-eta) * f[0]+
+                xsi  * (1-eta) * f[1]+
+                xsi  *    eta  * f[2]+
+             (1-xsi) *    eta  * f[3];
+  return v;
+}
+
+/* Linear interpolation routine for 2D C grid */
+static inline ErrorCode spatial_interpolation_2d_c_grid(double xsi, double eta, int xi, int yi, CStructuredGrid *grid, float **u_data, float **v_data, float *u, float *v)
+{
+  /* Cast data array into data[lat][lon] as per NEMO convention */
+  int xdim = grid->xdim;
+  float (* xgrid)[xdim] = (float (*)[xdim]) grid->lon;
+  float (* ygrid)[xdim] = (float (*)[xdim]) grid->lat;
+  float (*dataU)[xdim] = (float (*)[xdim]) u_data;
+  float (*dataV)[xdim] = (float (*)[xdim]) v_data;
+
+  float xgrid_loc[4] = {xgrid[yi][xi], xgrid[yi][xi+1], xgrid[yi+1][xi+1], xgrid[yi+1][xi]};
+  float ygrid_loc[4] = {ygrid[yi][xi], ygrid[yi][xi+1], ygrid[yi+1][xi+1], ygrid[yi+1][xi]};
+
+  double U0 = dataU[yi+1][xi]   * spherical_distance(xgrid_loc[3], xgrid_loc[0], ygrid_loc[3], ygrid_loc[0]);
+  double U1 = dataU[yi+1][xi+1] * spherical_distance(xgrid_loc[1], xgrid_loc[2], ygrid_loc[1], ygrid_loc[2]);
+  double V0 = dataV[yi][xi+1]   * spherical_distance(xgrid_loc[0], xgrid_loc[1], ygrid_loc[0], ygrid_loc[1]);
+  double V1 = dataV[yi+1][xi+1] * spherical_distance(xgrid_loc[2], xgrid_loc[3], ygrid_loc[2], ygrid_loc[3]);
+  double U = (1-xsi) * U0 + xsi * U1;
+  double V = (1-eta) * V0 + eta * V1;
+
+  double dphidxsi[4] = {eta-1, 1-eta, eta, -eta};
+  double dphideta[4] = {xsi-1, -xsi, xsi, 1-xsi};
+  double dxdxsi = 0; double dxdeta = 0;
+  double dydxsi = 0; double dydeta = 0;
+  int i;
+  for(i=0; i<4; ++i){
+    dxdxsi += xgrid_loc[i] *dphidxsi[i];
+    dxdeta += xgrid_loc[i] *dphideta[i];
+    dydxsi += ygrid_loc[i] *dphidxsi[i];
+    dydeta += ygrid_loc[i] *dphideta[i];
+  }
+  double deg2m = 1852 * 60.;
+  double rad = M_PI / 180.;
+  double lon = simple_interpolate(xsi, eta, xgrid_loc);
+  double lat = simple_interpolate(xsi, eta, ygrid_loc);
+  double jac = (dxdxsi*dydeta - dxdeta * dydxsi) * deg2m * deg2m * cos(rad * lat);
+
+  double dt = 1;
+  xsi += dt * U / jac;
+  eta += dt * V / jac;
+  double lon_new = simple_interpolate(xsi, eta, xgrid_loc);
+  double lat_new = simple_interpolate(xsi, eta, ygrid_loc);
+
+  *u = (lon_new-lon) / dt * deg2m * cos(rad * lat);
+  *v = (lat_new-lat) / dt * deg2m;
+
+  return SUCCESS;
+}
+
+
 /* Linear interpolation along the time axis */
 static inline ErrorCode temporal_interpolation_structured_grid(float x, float y, float z, double time, CField *f, 
                                                                GridCode gcode, int *xi, int *yi, int *zi, int *ti,
@@ -525,8 +599,60 @@ static inline ErrorCode temporal_interpolation_structured_grid(float x, float y,
   }
 }
 
+static inline ErrorCode temporal_interpolation_structured_c_grid(float x, float y, float z, double time, CField *U, CField *V, 
+                                                               GridCode gcode, int *xi, int *yi, int *zi, int *ti,
+                                                               float *valueU, float *valueV)
+{
+  ErrorCode err;
+  CStructuredGrid *grid = U->grid->grid;
+  int igrid = U->igrid;
+
+  if ( (U->grid->grid != V->grid->grid) || (U->time_periodic != V->time_periodic) || (U->allow_time_extrapolation != V->allow_time_extrapolation) ){
+    return ERROR;
+  }
+
+  /* Find time index for temporal interpolation */
+  if (U->time_periodic == 0 && U->allow_time_extrapolation == 0 && (time < grid->time[0] || time > grid->time[grid->tdim-1])){
+    return ERROR_TIME_EXTRAPOLATION;
+  }
+  err = search_time_index(&time, grid->tdim, grid->time, &ti[igrid], U->time_periodic);
+
+  /* Cast data array intp data[time][depth][lat][lon] as per NEMO convention */
+  float (*dataU)[U->zdim][U->ydim][U->xdim] = (float (*)[U->zdim][U->ydim][U->xdim]) U->data;
+  float (*dataV)[V->zdim][V->ydim][V->xdim] = (float (*)[V->zdim][V->ydim][V->xdim]) V->data;
+  double xsi, eta, zeta;
+
+
+  if (ti[igrid] < grid->tdim-1 && time > grid->time[ti[igrid]]) {
+    float u0, u1, v0, v1;
+    double t0 = grid->time[ti[igrid]]; double t1 = grid->time[ti[igrid]+1];
+    /* Identify grid cell to sample through local linear search */
+    err = search_indices(x, y, z, grid->xdim, grid->ydim, grid->zdim, grid->lon, grid->lat, grid->depth, &xi[igrid], &yi[igrid], &zi[igrid], &xsi, &eta, &zeta, grid->sphere_mesh, grid->zonal_periodic, gcode, grid->z4d, ti[igrid], grid->tdim, time, t0, t1); CHECKERROR(err);
+    if (grid->zdim==1){
+      err = spatial_interpolation_2d_c_grid(xsi, eta, xi[igrid], yi[igrid], grid, (float**)(dataU[ti[igrid]]),   (float**)(dataV[ti[igrid]]),   &u0, &v0);
+      err = spatial_interpolation_2d_c_grid(xsi, eta, xi[igrid], yi[igrid], grid, (float**)(dataU[ti[igrid]+1]), (float**)(dataV[ti[igrid]+1]), &u1, &v1);
+    } else {
+      printf("C grids only work in 2d");
+      return ERROR;
+    }
+    *valueU = u0 + (u1 - u0) * (float)((time - t0) / (t1 - t0));
+    *valueV = v0 + (v1 - v0) * (float)((time - t0) / (t1 - t0));
+    return SUCCESS;
+  } else {
+    double t0 = grid->time[ti[igrid]];
+    err = search_indices(x, y, z, grid->xdim, grid->ydim, grid->zdim, grid->lon, grid->lat, grid->depth, &xi[igrid], &yi[igrid], &zi[igrid], &xsi, &eta, &zeta, grid->sphere_mesh, grid->zonal_periodic, gcode, grid->z4d, ti[igrid], grid->tdim, t0, t0, t0+1); CHECKERROR(err);
+    if (grid->zdim==1)
+      err = spatial_interpolation_2d_c_grid(xsi, eta, xi[igrid], yi[igrid], grid, (float**)(dataU[ti[igrid]]), (float**)(dataV[ti[igrid]]), valueU, valueV);
+    else{
+      printf("C grids only work in 2d");
+      return ERROR;
+    }
+    return SUCCESS;
+  }
+}
+
 static inline ErrorCode temporal_interpolation(float x, float y, float z, double time, CField *f, 
-                                                void * vxi,  void * vyi,  void * vzi,  void * vti, float *value, int interp_method)
+                                               void * vxi,  void * vyi,  void * vzi,  void * vti, float *value, int interp_method)
 {
   CGrid *_grid = f->grid;
   GridCode gcode = _grid->gtype;
@@ -535,7 +661,8 @@ static inline ErrorCode temporal_interpolation(float x, float y, float z, double
   int *zi = (int *) vzi;
   int *ti = (int *) vti;
 
-  if (gcode == RECTILINEAR_Z_GRID || gcode == RECTILINEAR_S_GRID || gcode == CURVILINEAR_Z_GRID || gcode == CURVILINEAR_S_GRID)
+  if ((gcode == RECTILINEAR_Z_GRID || gcode == RECTILINEAR_S_GRID || gcode == CURVILINEAR_Z_GRID || gcode == CURVILINEAR_S_GRID)
+                  && (_grid->staggered_gtype == A_GRID))
     return temporal_interpolation_structured_grid(x, y, z, time, f, gcode, xi, yi, zi, ti, value, interp_method);
   else{
     printf("Only RECTILINEAR_Z_GRID, RECTILINEAR_S_GRID, CURVILINEAR_Z_GRID and CURVILINEAR_S_GRID grids are currently implemented\n");
@@ -544,14 +671,24 @@ static inline ErrorCode temporal_interpolation(float x, float y, float z, double
 }
 
 static inline ErrorCode temporal_interpolationUV(float x, float y, float z, double time,
-                                                 CField *U, CField *V,  void * xi,  void * yi,  void * zi,  void * ti,
+                                                 CField *U, CField *V,  void * vxi,  void * vyi,  void * vzi,  void * vti,
                                                  float *valueU, float *valueV, int interp_method)
 {
   ErrorCode err;
+  CGrid *_grid = U->grid;
 
-  err = temporal_interpolation(x, y, z, time, U, xi, yi, zi, ti, valueU, interp_method); CHECKERROR(err);
-  err = temporal_interpolation(x, y, z, time, V, xi, yi, zi, ti, valueV, interp_method); CHECKERROR(err);
-
+  if (_grid->staggered_gtype == A_GRID){
+    err = temporal_interpolation(x, y, z, time, U, vxi, vyi, vzi, vti, valueU, interp_method); CHECKERROR(err);
+    err = temporal_interpolation(x, y, z, time, V, vxi, vyi, vzi, vti, valueV, interp_method); CHECKERROR(err);
+  }
+  else{
+    GridCode gcode = _grid->gtype;
+    int *xi = (int *) vxi;
+    int *yi = (int *) vyi;
+    int *zi = (int *) vzi;
+    int *ti = (int *) vti;
+    err = temporal_interpolation_structured_c_grid(x, y, z, time, U, V, gcode, xi, yi, zi, ti, valueU, valueV); CHECKERROR(err);
+  }
   return SUCCESS;
 }
 
