@@ -1058,8 +1058,6 @@ class NetcdfFileBuffer(object):
         xdim = lon.size if len(lon.shape) == 1 else lon.shape[-1]
         ydim = lat.size if len(lat.shape) == 1 else lat.shape[-2]
         self.indices['lon'] = self.indices['lon'] if 'lon' in self.indices else range(xdim)
-        #if len(self.indices['lon']) == 100:
-        #    a=b
         self.indices['lat'] = self.indices['lat'] if 'lat' in self.indices else range(ydim)
         if len(lon.shape) == 1:
             lon_subset = np.array(lon[self.indices['lon']])
@@ -1070,6 +1068,9 @@ class NetcdfFileBuffer(object):
         elif len(lon.shape) == 3:  # some lon, lat have a time dimension 1
             lon_subset = np.array(lon[0, self.indices['lat'], self.indices['lon']])
             lat_subset = np.array(lat[0, self.indices['lat'], self.indices['lon']])
+        elif len(lon.shape) == 4:  # some lon, lat have a time and depth dimension 1
+            lon_subset = np.array(lon[0, 0, self.indices['lat'], self.indices['lon']])
+            lat_subset = np.array(lat[0, 0, self.indices['lat'], self.indices['lon']])
         if len(lon.shape) > 1:  # if lon, lat are rectilinear but were stored in arrays
             xdim = lon_subset.shape[0]
             ydim = lat_subset.shape[1]

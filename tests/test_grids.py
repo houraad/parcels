@@ -333,8 +333,7 @@ def test_nemo_grid(mode):
                  'V': data_path + 'Vv_eastward_nemo_cross_180lon.nc',
                  'mesh_mask': data_path + 'mask_nemo_cross_180lon.nc'}
     variables = {'U': 'U', 'V': 'V'}
-    dimensions = {'U': {'lon': 'nav_lon_u', 'lat': 'nav_lat_u'},
-                  'V': {'lon': 'nav_lon_v', 'lat': 'nav_lat_v'}}
+    dimensions = {'lon': 'glamf', 'lat': 'gphif'}
     field_set = FieldSet.from_nemo(filenames, variables, dimensions)
 
     def sampleVel(particle, fieldset, time, dt):
@@ -362,8 +361,7 @@ def test_advect_nemo(mode):
                  'V': data_path + 'Vv_eastward_nemo_cross_180lon.nc',
                  'mesh_mask': data_path + 'mask_nemo_cross_180lon.nc'}
     variables = {'U': 'U', 'V': 'V'}
-    dimensions = {'U': {'lon': 'nav_lon_u', 'lat': 'nav_lat_u'},
-                  'V': {'lon': 'nav_lon_v', 'lat': 'nav_lat_v'}}
+    dimensions = {'lon': 'glamf', 'lat': 'gphif'}
     field_set = FieldSet.from_nemo(filenames, variables, dimensions)
 
     lonp = 175.5
