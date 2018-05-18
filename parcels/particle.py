@@ -160,9 +160,9 @@ class ScipyParticle(_Particle):
     Additional Variables can be added via the :Class Variable: objects
     """
 
-    lon = Variable('lon', dtype=np.float32)
-    lat = Variable('lat', dtype=np.float32)
-    depth = Variable('depth', dtype=np.float32)
+    lon = Variable('lon', dtype=np.float64)
+    lat = Variable('lat', dtype=np.float64)
+    depth = Variable('depth', dtype=np.float64)
     time = Variable('time', dtype=np.float64)
     id = Variable('id', dtype=np.int32)
     fileid = Variable('fileid', dtype=np.int32, to_write=False)

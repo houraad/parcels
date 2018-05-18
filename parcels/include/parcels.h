@@ -149,7 +149,7 @@ static inline void fix_2d_indices(int *xi, int *yi, int xdim, int ydim, int sphe
 }
 
 
-static inline ErrorCode search_indices_rectilinear(float x, float y, float z, int xdim, int ydim, int zdim,
+static inline ErrorCode search_indices_rectilinear(double x, double y, double z, int xdim, int ydim, int zdim,
                                             float *xvals, float *yvals, float *zvals, int sphere_mesh, int zonal_periodic, GridCode gcode,
                                             int *xi, int *yi, int *zi, double *xsi, double *eta, double *zeta,
                                             int z4d, int ti, int tdim, double time, double t0, double t1)
@@ -229,7 +229,7 @@ static inline ErrorCode search_indices_rectilinear(float x, float y, float z, in
 }
 
 
-static inline ErrorCode search_indices_curvilinear(float x, float y, float z, int xdim, int ydim, int zdim,
+static inline ErrorCode search_indices_curvilinear(double x, double y, double z, int xdim, int ydim, int zdim,
                                             float *xvals, float *yvals, float *zvals, int sphere_mesh, int zonal_periodic, GridCode gcode,
                                             int *xi, int *yi, int *zi, double *xsi, double *eta, double *zeta,
                                             int z4d, int ti, int tdim, double time, double t0, double t1)
@@ -351,7 +351,7 @@ static inline ErrorCode search_indices_curvilinear(float x, float y, float z, in
 /* Local linear search to update grid index
  * params ti, sizeT, time. t0, t1 are only used for 4D S grids
  * */
-static inline ErrorCode search_indices(float x, float y, float z, int xdim, int ydim, int zdim,
+static inline ErrorCode search_indices(double x, double y, double z, int xdim, int ydim, int zdim,
                                             float *xvals, float *yvals, float *zvals,
                                             int *xi, int *yi, int *zi, double *xsi, double *eta, double *zeta,
                                             int sphere_mesh, int zonal_periodic,
@@ -525,7 +525,7 @@ static inline ErrorCode spatial_interpolation_2d_c_grid(double xsi, double eta, 
 
 
 /* Linear interpolation along the time axis */
-static inline ErrorCode temporal_interpolation_structured_grid(float x, float y, float z, double time, CField *f, 
+static inline ErrorCode temporal_interpolation_structured_grid(double x, double y, double z, double time, CField *f, 
                                                                GridCode gcode, int *xi, int *yi, int *zi, int *ti,
                                                                float *value, int interp_method)
 {
@@ -599,7 +599,7 @@ static inline ErrorCode temporal_interpolation_structured_grid(float x, float y,
   }
 }
 
-static inline ErrorCode temporal_interpolation_structured_c_grid(float x, float y, float z, double time, CField *U, CField *V, 
+static inline ErrorCode temporal_interpolation_structured_c_grid(double x, double y, double z, double time, CField *U, CField *V, 
                                                                GridCode gcode, int *xi, int *yi, int *zi, int *ti,
                                                                float *valueU, float *valueV)
 {
@@ -651,7 +651,7 @@ static inline ErrorCode temporal_interpolation_structured_c_grid(float x, float 
   }
 }
 
-static inline ErrorCode temporal_interpolation(float x, float y, float z, double time, CField *f, 
+static inline ErrorCode temporal_interpolation(double x, double y, double z, double time, CField *f, 
                                                void * vxi,  void * vyi,  void * vzi,  void * vti, float *value, int interp_method)
 {
   CGrid *_grid = f->grid;
@@ -670,7 +670,7 @@ static inline ErrorCode temporal_interpolation(float x, float y, float z, double
   }
 }
 
-static inline ErrorCode temporal_interpolationUV(float x, float y, float z, double time,
+static inline ErrorCode temporal_interpolationUV(double x, double y, double z, double time,
                                                  CField *U, CField *V,  void * vxi,  void * vyi,  void * vzi,  void * vti,
                                                  float *valueU, float *valueV, int interp_method)
 {
@@ -692,7 +692,7 @@ static inline ErrorCode temporal_interpolationUV(float x, float y, float z, doub
   return SUCCESS;
 }
 
-static inline ErrorCode temporal_interpolationUVrotation(float x, float y, float z, double time,
+static inline ErrorCode temporal_interpolationUVrotation(double x, double y, double z, double time,
                                                  CField *U, CField *V, CField *cosU, CField *sinU, CField *cosV, CField *sinV,
                                                   void * xi,  void * yi,  void * zi,  void * ti, float *valueU, float *valueV, int interp_method)
 {
