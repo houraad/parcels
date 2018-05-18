@@ -517,8 +517,8 @@ static inline ErrorCode spatial_interpolation_2d_c_grid(double xsi, double eta, 
   double lon_new = simple_interpolate(xsi, eta, xgrid_loc);
   double lat_new = simple_interpolate(xsi, eta, ygrid_loc);
 
-  *u = (lon_new-lon) / dt * deg2m * cos(rad * lat);
-  *v = (lat_new-lat) / dt * deg2m;
+  *u = (lon_new-lon) / dt;
+  *v = (lat_new-lat) / dt;
 
   return SUCCESS;
 }
