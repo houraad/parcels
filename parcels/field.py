@@ -193,7 +193,7 @@ class Field(object):
         self.lat = self.grid.lat
         self.depth = self.grid.depth
         self.time = self.grid.time
-        if self.grid.mesh is 'flat' or (name not in self.unitconverters.keys()):
+        if self.grid.mesh is 'flat' or (name not in self.unitconverters.keys()) or self.grid.staggered_grid_type == StaggeredGridCode.CGrid:
             self.units = UnitConverter()
         elif self.grid.mesh is 'spherical':
             self.units = self.unitconverters[name]

@@ -347,8 +347,8 @@ def test_nemo_grid(mode):
     latp = 81.5
     pset = ParticleSet.from_list(field_set, MyParticle, lon=[lonp], lat=[latp])
     pset.execute(pset.Kernel(sampleVel), runtime=0, dt=0)
-    u = field_set.U.units.to_source(pset[0].zonal, lonp, latp, 0)
-    v = field_set.V.units.to_source(pset[0].meridional, lonp, latp, 0)
+    u = pset[0].zonal * 1852 * 60 * np.cos(latp * np.pi / 180)
+    v = pset[0].meridional * 1852 * 60
     assert abs(u - 1) < 1e-4
     assert abs(v) < 1e-4
 

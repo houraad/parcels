@@ -506,14 +506,14 @@ static inline ErrorCode spatial_interpolation_2d_c_grid(double xsi, double eta, 
   double lat = simple_interpolate(xsi, eta, ygrid_loc);
   double jac = (dxdxsi*dydeta - dxdeta * dydxsi) * deg2m * deg2m * cos(rad * lat);
 
-  double dt = 1;
-  xsi += dt * U / jac;
-  eta += dt * V / jac;
-  double lon_new = simple_interpolate(xsi, eta, xgrid_loc);
-  double lat_new = simple_interpolate(xsi, eta, ygrid_loc);
-
-  *u = (lon_new-lon) / dt * deg2m * cos(rad * lat);
-  *v = (lat_new-lat) / dt * deg2m;
+  *u = ( (-(1-eta) * U - (1-xsi) * V ) * xgrid_loc[0] +
+         ( (1-eta) * U -  xsi    * V ) * xgrid_loc[1] +
+         (    eta  * U +  xsi    * V ) * xgrid_loc[2] +
+         (   -eta  * U + (1-xsi) * V ) * xgrid_loc[3] ) / jac;
+  *v = ( (-(1-eta) * U - (1-xsi) * V ) * ygrid_loc[0] +
+         ( (1-eta) * U -  xsi    * V ) * ygrid_loc[1] +
+         (    eta  * U +  xsi    * V ) * ygrid_loc[2] +
+         (   -eta  * U + (1-xsi) * V ) * ygrid_loc[3] ) / jac;
 
   return SUCCESS;
 }
