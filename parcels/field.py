@@ -265,6 +265,7 @@ class Field(object):
         if not isinstance(filenames, Iterable) or isinstance(filenames, str):
             filenames = [filenames]
         dimension_filename = dimension_filename if dimension_filename else filenames[0]
+        indices = indices.copy()
         with NetcdfFileBuffer(dimension_filename, dimensions, indices) as filebuffer:
             lon, lat = filebuffer.read_lonlat
             depth = filebuffer.read_depth  # something should be done for depth (not in dim_filename)
