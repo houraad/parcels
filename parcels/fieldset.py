@@ -19,7 +19,7 @@ class FieldSet(object):
     :param V: :class:`parcels.field.Field` object for meridional velocity component
     :param fields: Dictionary of additional :class:`parcels.field.Field` objects
     """
-    def __init__(self, U, V, fields={}):
+    def __init__(self, U, V, fields=None):
         self.gridset = GridSet()
         if U:
             self.add_field(U)
@@ -30,8 +30,9 @@ class FieldSet(object):
         self.UV = UV
 
         # Add additional fields as attributes
-        for name, field in fields.items():
-            self.add_field(field)
+        if fields:
+            for name, field in fields.items():
+                self.add_field(field)
 
     @classmethod
     def from_data(cls, data, dimensions, transpose=False, mesh='spherical',
@@ -40,6 +41,7 @@ class FieldSet(object):
 
         :param data: Dictionary mapping field names to numpy arrays.
                Note that at least a 'U' and 'V' numpy array need to be given
+
                1. If data shape is [xdim, ydim], [xdim, ydim, zdim], [xdim, ydim, tdim] or [xdim, ydim, zdim, tdim],
                   whichever is relevant for the dataset, use the flag transpose=True
                2. If data shape is [ydim, xdim], [zdim, ydim, xdim], [tdim, ydim, xdim] or [tdim, zdim, ydim, xdim],
@@ -109,7 +111,7 @@ class FieldSet(object):
                 g.time_origin = ugrid.time_origin
 
     @classmethod
-    def from_netcdf(cls, filenames, variables, dimensions, indices={},
+    def from_netcdf(cls, filenames, variables, dimensions, indices=None,
                     mesh='spherical', allow_time_extrapolation=None, time_periodic=False, full_load=False,
                     dimension_filename='', **kwargs):
         """Initialises FieldSet object from NetCDF files
@@ -160,7 +162,7 @@ class FieldSet(object):
             # Use dimensions[var] and indices[var] if either of them is a dict of dicts
             dims = dimensions[var] if var in dimensions else dimensions
             dims['data'] = name
-            inds = indices[var] if var in indices else indices
+            inds = indices[var] if (indices and var in indices) else indices
 
             fields[var] = Field.from_netcdf(paths, var, dims, inds, mesh=mesh,
                                             allow_time_extrapolation=allow_time_extrapolation,
@@ -171,17 +173,14 @@ class FieldSet(object):
         return cls(u, v, fields=fields)
 
     @classmethod
-    def from_nemo(cls, filenames, variables, dimensions, indices={}, mesh='spherical',
+    def from_nemo(cls, filenames, variables, dimensions, indices=None, mesh='spherical',
                   allow_time_extrapolation=None, time_periodic=False, **kwargs):
         """Initialises FieldSet object from NetCDF files of Curvilinear NEMO fields.
         Note that this assumes the following default values for the mesh_mask:
-        variables['mesh_mask'] = {'cosU': 'cosU',
-                                  'sinU': 'sinU',
-                                  'cosV': 'cosV',
-                                  'sinV': 'sinV'}
-        dimensions['mesh_mask'] = {'U': {'lon': 'glamu', 'lat': 'gphiu'},
-                                   'V': {'lon': 'glamv', 'lat': 'gphiv'},
-                                   'F': {'lon': 'glamf', 'lat': 'gphif'}}
+
+        variables['mesh_mask'] = {'cosU': 'cosU', 'sinU': 'sinU', 'cosV': 'cosV', 'sinV': 'sinV'}
+
+        dimensions['mesh_mask'] = {'U': {'lon': 'glamu', 'lat': 'gphiu'}, 'V': {'lon': 'glamv', 'lat': 'gphiv'}, 'F': {'lon': 'glamf', 'lat': 'gphif'}}
 
         :param filenames: Dictionary mapping variables to file(s). The
                filepath may contain wildcards to indicate multiple files,
@@ -216,7 +215,7 @@ class FieldSet(object):
                                dimension_filename=dimension_filename, staggered_grid_type=StaggeredGridCode.CGrid, **kwargs)
 
     @classmethod
-    def from_parcels(cls, basename, uvar='vozocrtx', vvar='vomecrty', indices={}, extra_fields={},
+    def from_parcels(cls, basename, uvar='vozocrtx', vvar='vomecrty', indices=None, extra_fields=None,
                      allow_time_extrapolation=None, time_periodic=False, full_load=False, **kwargs):
         """Initialises FieldSet data from NetCDF files using the Parcels FieldSet.write() conventions.
 
@@ -236,6 +235,9 @@ class FieldSet(object):
                a better memory management during particle set execution.
                full_load is however sometimes necessary for plotting the fields.
         """
+
+        if extra_fields is None:
+            extra_fields = {}
 
         dimensions = {}
         default_dims = {'lon': 'nav_lon', 'lat': 'nav_lat',
@@ -355,7 +357,7 @@ class FieldSet(object):
             nextTime = min(nextTime, nextTime_loc) if signdt >= 0 else max(nextTime, nextTime_loc)
 
         for f in self.fields:
-            if f.name == 'UV' or not f.grid.defer_load:
+            if f.name == 'UV' or not f.grid.defer_load or f.is_gradient:
                 continue
             g = f.grid
             if g.update_status == 'first_updated':  # First load of data
@@ -377,6 +379,8 @@ class FieldSet(object):
                 if f._scaling_factor:
                     data *= f._scaling_factor
                 f.data[tindex, :] = f.reshape(data)[tindex, :]
+            if f.gradientx is not None and g.update_status in ['first_updated', 'updated']:
+                f.gradient(update=True)
 
         if abs(nextTime) == np.infty or np.isnan(nextTime):  # Second happens when dt=0
             return nextTime

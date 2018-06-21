@@ -142,6 +142,7 @@ class Field(object):
 
     :param name: Name of the field
     :param data: 2D, 3D or 4D numpy array of field data.
+
            1. If data shape is [xdim, ydim], [xdim, ydim, zdim], [xdim, ydim, tdim] or [xdim, ydim, zdim, tdim],
               whichever is relevant for the dataset, use the flag transpose=True
            2. If data shape is [ydim, xdim], [zdim, ydim, xdim], [tdim, ydim, xdim] or [tdim, zdim, ydim, xdim],
@@ -201,8 +202,10 @@ class Field(object):
             raise ValueError("Unsupported mesh type. Choose either: 'spherical' or 'flat'")
         self.interp_method = interp_method
         self.fieldset = None
-        if allow_time_extrapolation is None:
-            self.allow_time_extrapolation = True if time is None else False
+        if self.name in ['cosU', 'sinU', 'cosV', 'sinV']:
+            self.allow_time_extrapolation = True
+        elif allow_time_extrapolation is None:
+            self.allow_time_extrapolation = True if len(self.grid.time) == 1 else False
         else:
             self.allow_time_extrapolation = allow_time_extrapolation
 
@@ -227,6 +230,8 @@ class Field(object):
                 self.data[self.data > self.vmax] = 0.
 
         self._scaling_factor = None
+        (self.gradientx, self.gradienty) = (None, None)  # to store if Field is a gradient() of another field
+        self.is_gradient = False
 
         # Variable names in JIT code
         self.ccode_data = self.name
@@ -235,7 +240,7 @@ class Field(object):
         self.timeFiles = kwargs.pop('timeFiles', None)
 
     @classmethod
-    def from_netcdf(cls, filenames, variable, dimensions, indices={},
+    def from_netcdf(cls, filenames, variable, dimensions, indices=None,
                     mesh='spherical', allow_time_extrapolation=None, time_periodic=False, full_load=False, dimension_filename='', **kwargs):
         """Create field from netCDF file
 
@@ -265,7 +270,8 @@ class Field(object):
         if not isinstance(filenames, Iterable) or isinstance(filenames, str):
             filenames = [filenames]
         dimension_filename = dimension_filename if dimension_filename else filenames[0]
-        indices = indices.copy()
+        if indices is None:
+            indices = {}
         with NetcdfFileBuffer(dimension_filename, dimensions, indices) as filebuffer:
             lon, lat = filebuffer.read_lonlat
             depth = filebuffer.read_depth  # something should be done for depth (not in dim_filename)
@@ -445,15 +451,29 @@ class Field(object):
             self.calc_cell_edge_sizes()
         return self.grid.cell_edge_sizes['x'] * self.grid.cell_edge_sizes['y']
 
-    def gradient(self):
+    def gradient(self, update=False):
         """Method to calculate horizontal gradients of Field.
-                Returns two numpy arrays: the zonal and meridional gradients,
-                on the same Grid as the original Field, using numpy.gradient() method"""
+                Returns two Fields: the zonal and meridional gradients,
+                on the same Grid as the original Field, using numpy.gradient() method
+                Names of these grids are dNAME_dx and dNAME_dy, where NAME is the name
+                of the original Field"""
         if not self.grid.cell_edge_sizes:
             self.calc_cell_edge_sizes()
-        dFdy = np.gradient(self.data, axis=-2) / self.grid.cell_edge_sizes['y']
-        dFdx = np.gradient(self.data, axis=-1) / self.grid.cell_edge_sizes['x']
-        return dFdx, dFdy
+        if self.grid.defer_load and self.data is None:
+            (dFdx, dFdy) = (None, None)
+        else:
+            dFdy = np.gradient(self.data, axis=-2) / self.grid.cell_edge_sizes['y']
+            dFdx = np.gradient(self.data, axis=-1) / self.grid.cell_edge_sizes['x']
+        if update:
+            self.gradientx.data = dFdx
+            self.gradienty.data = dFdy
+        else:
+            dFdx_fld = Field('d%s_dx' % self.name, dFdx, grid=self.grid)
+            dFdy_fld = Field('d%s_dy' % self.name, dFdy, grid=self.grid)
+            dFdx_fld.is_gradient = True
+            dFdy_fld.is_gradient = True
+            (self.gradientx, self.gradienty) = (dFdx_fld, dFdy_fld)
+            return (dFdx_fld, dFdy_fld)
 
     def interpolator2D_scipy(self, ti, z_idx=None):
         """Provide a SciPy interpolator for spatial interpolation
@@ -500,6 +520,8 @@ class Field(object):
 
     def search_indices_vertical_s(self, x, y, z, xi, yi, xsi, eta, ti, time):
         grid = self.grid
+        if time < grid.time[ti]:
+            ti -= 1
         if grid.z4d:
             if ti == len(grid.time)-1:
                 depth_vector = (1-xsi)*(1-eta) * grid.depth[-1, :, yi, xi] + \
@@ -511,9 +533,9 @@ class Field(object):
                     xsi*(1-eta) * grid.depth[ti:ti+2, :, yi, xi+1] + \
                     xsi*eta * grid.depth[ti:ti+2, :, yi+1, xi+1] + \
                     (1-xsi)*eta * grid.depth[ti:ti+2, :, yi+1, xi]
-                t0 = grid.time[ti]
-                t1 = grid.time[ti + 1]
-                depth_vector = dv2[0, :] + (dv2[1, :]-dv2[0, :]) * (time - t0) / (t1 - t0)
+                tt = (time-grid.time[ti]) / (grid.time[ti+1]-grid.time[ti])
+                assert tt >= 0 and tt <= 1, 'Vertical s grid is being wrongly interpolated in time'
+                depth_vector = dv2[0, :] * (1-tt) + dv2[1, :] * tt
         else:
             depth_vector = (1-xsi)*(1-eta) * grid.depth[:, yi, xi] + \
                 xsi*(1-eta) * grid.depth[:, yi, xi+1] + \
@@ -625,26 +647,23 @@ class Field(object):
             if grid.mesh == 'spherical':
                 px[0] = px[0]+360 if px[0] < x-225 else px[0]
                 px[0] = px[0]-360 if px[0] > x+225 else px[0]
-                px[1:] = np.where(px[1:] - x > 180, px[1:]-360, px[1:])
-                px[1:] = np.where(-px[1:] + x > 180, px[1:]+360, px[1:])
+                px[1:] = np.where(px[1:] - px[0] > 180, px[1:]-360, px[1:])
+                px[1:] = np.where(-px[1:] + px[0] > 180, px[1:]+360, px[1:])
             py = np.array([grid.lat[yi, xi], grid.lat[yi, xi+1], grid.lat[yi+1, xi+1], grid.lat[yi+1, xi]])
             a = np.dot(invA, px)
             b = np.dot(invA, py)
 
             aa = a[3]*b[2] - a[2]*b[3]
+            bb = a[3]*b[0] - a[0]*b[3] + a[1]*b[2] - a[2]*b[1] + x*b[3] - y*a[3]
+            cc = a[1]*b[0] - a[0]*b[1] + x*b[1] - y*a[1]
             if abs(aa) < 1e-12:  # Rectilinear cell, or quasi
-                xsi = ((x-px[0]) / (px[1]-px[0])
-                       + (x-px[3]) / (px[2]-px[3])) * .5
-                eta = ((y-grid.lat[yi, xi]) / (grid.lat[yi+1, xi]-grid.lat[yi, xi])
-                       + (y-grid.lat[yi, xi+1]) / (grid.lat[yi+1, xi+1]-grid.lat[yi, xi+1])) * .5
+                eta = -cc / bb
             else:
-                bb = a[3]*b[0] - a[0]*b[3] + a[1]*b[2] - a[2]*b[1] + x*b[3] - y*a[3]
-                cc = a[1]*b[0] - a[0]*b[1] + x*b[1] - y*a[1]
                 det2 = bb*bb-4*aa*cc
                 if det2 > 0:  # so, if det is nan we keep the xsi, eta from previous iter
                     det = np.sqrt(det2)
                     eta = (-bb+det)/(2*aa)
-                    xsi = (x-a[0]-a[2]*eta) / (a[1]+a[3]*eta)
+            xsi = (x-a[0]-a[2]*eta) / (a[1]+a[3]*eta)
             if xsi < 0 and eta < 0 and xi == 0 and yi == 0:
                 raise FieldSamplingError(x, y, 0, field=self)
             if xsi > 1 and eta > 1 and xi == grid.xdim-1 and yi == grid.ydim-1:
@@ -884,7 +903,8 @@ class Field(object):
 
         if with_particles or (not animation):
             show_time = self.grid.time[0] if show_time is None else show_time
-            self.fieldset.computeTimeChunk(show_time, 1)
+            if self.grid.defer_load:
+                self.fieldset.computeTimeChunk(show_time, 1)
             (idx, periods) = self.time_index(show_time)
             show_time -= periods*(self.grid.time[-1]-self.grid.time[0])
             if self.grid.time.size > 1:
@@ -1042,7 +1062,7 @@ class NetcdfFileBuffer(object):
         except:
             self.dataset = xr.open_dataset(str(self.filename), decode_cf=False)
             self.dataset['decoded'] = False
-        for inds in self.indices.itervalues():
+        for inds in self.indices.values():
             if type(inds) not in [list, range]:
                 raise RuntimeError('Indices for field subsetting need to be a list')
         return self
